@@ -23,12 +23,15 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "loopback.h"
+#include "wizchip_conf.h"
+#include "wizchip_init.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#define True_STD
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -48,7 +51,17 @@ DMA_HandleTypeDef hdma_spi1_tx;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+wiz_NetInfo gWIZNETINFO = { .mac = {0x00,0x08,0xdc,0xff,0xff,0xff},
+							.ip = {192,168,0,13},
+							.sn = {255, 255, 255, 0},
+							.gw = {192, 168, 0, 1},
+							.dns = {168, 126, 63, 1}
+							};
+uint8_t destip[4] = {192, 168, 0, 200};                  //DST_IP Address
 
+uint8_t data_buf[2048];
+
+void print_network_information(void);
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -58,7 +71,41 @@ static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+uint8_t rxData[2];
+#ifdef KEIL
+     #ifdef __GNUC__
+     //With GCC, small printf (option LD Linker->Libraries->Small printf
+     //set to 'Yes') calls __io_putchar()
+         #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+		#else
+				 #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+		#endif /* __GNUC__*/
+#endif
 
+#ifdef True_STD
+	int _write(int fd, char *str, int len)
+	{
+		for(int i=0; i<len; i++)
+		{
+			HAL_UART_Transmit(&huart2, (uint8_t *)&str[i], 1, 0xFFFF);
+		}
+		return len;
+	}
+#endif
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+
+    /*
+        This will be called once data is received successfully,
+        via interrupts.
+    */
+
+     /*
+       loop back received data
+     */
+     HAL_UART_Receive_IT(&huart2, rxData, 1);
+     HAL_UART_Transmit(&huart2, rxData, 1, 1000);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -96,11 +143,38 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_SPI1_Init();
+
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_UART_Receive_IT(&huart2, rxData, 1);
+  printf("System start.\r\n");
 
+
+#if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_
+	// SPI method callback registration
+	reg_wizchip_spi_cbfunc(WIZnet_SpiReadByte, WIZnet_SpiWriteByte);
+	// CS function register
+	reg_wizchip_cs_cbfunc(WIZnet_CsEnable,WIZnet_CsDisable);
+#else
+	// Indirect bus method callback registration
+	//reg_wizchip_bus_cbfunc(busReadByte, busWriteByte);
+#endif
+
+#if _WIZCHIP_IO_MODE_ == _WIZCHIP_IO_MODE_BUS_INDIR_
+	//You have to add the FSMC function
+#else
+	  MX_SPI1_Init();
+#endif
+
+#if _WIZCHIP_ == W5100S || _WIZCHIP_ == W6100
+  ctlwizchip(CW_SYS_UNLOCK,& syslock);
+#endif
+  ctlnetwork(CN_SET_NETINFO,&gWIZNETINFO);
+
+  printf("VERSION(%x) = %.2x \r\n", VERSIONR,getVERSIONR());
+  print_network_information();
   /* USER CODE END 2 */
+
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -109,6 +183,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  loopback_tcps(0, data_buf, 5000);
+	  loopback_tcpc(1,data_buf,destip,5001);
   }
   /* USER CODE END 3 */
 }
@@ -280,7 +356,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void print_network_information(void)
+{
+	wizchip_getnetinfo(&gWIZNETINFO);
+	printf("Mac address: %02x:%02x:%02x:%02x:%02x:%02x\n\r",gWIZNETINFO.mac[0],gWIZNETINFO.mac[1],gWIZNETINFO.mac[2],gWIZNETINFO.mac[3],gWIZNETINFO.mac[4],gWIZNETINFO.mac[5]);
+	printf("IP address : %d.%d.%d.%d\n\r",gWIZNETINFO.ip[0],gWIZNETINFO.ip[1],gWIZNETINFO.ip[2],gWIZNETINFO.ip[3]);
+	printf("SN Mask	   : %d.%d.%d.%d\n\r",gWIZNETINFO.sn[0],gWIZNETINFO.sn[1],gWIZNETINFO.sn[2],gWIZNETINFO.sn[3]);
+	printf("Gate way   : %d.%d.%d.%d\n\r",gWIZNETINFO.gw[0],gWIZNETINFO.gw[1],gWIZNETINFO.gw[2],gWIZNETINFO.gw[3]);
+	printf("DNS Server : %d.%d.%d.%d\n\r",gWIZNETINFO.dns[0],gWIZNETINFO.dns[1],gWIZNETINFO.dns[2],gWIZNETINFO.dns[3]);
 
+}
 /* USER CODE END 4 */
 
 /**
