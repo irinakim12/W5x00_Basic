@@ -149,8 +149,7 @@ int main(void)
   HAL_UART_Receive_IT(&huart2, rxData, 1);
   printf("System start.\r\n");
 
-
-#if _WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_
+#if (_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_) ||(_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_VDM_)||(_WIZCHIP_IO_MODE_ & _WIZCHIP_IO_MODE_SPI_FDM)
 	// SPI method callback registration
 	reg_wizchip_spi_cbfunc(WIZnet_SpiReadByte, WIZnet_SpiWriteByte);
 	// CS function register
